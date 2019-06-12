@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 2.8)
+add_compile_options(-std=c++11)
+
+project( ThesisTask )
+SET(OpenCV_DIR ~/installation/OpenCV-3.4.4/share/OpenCV/)
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+add_executable( ThesisTask main.cpp )
+target_link_libraries( ThesisTask ${OpenCV_LIBS} )
