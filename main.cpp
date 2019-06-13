@@ -252,13 +252,6 @@ namespace eight {
         return vecs;
     }
 
-    class SampsonDistanceSquared {
-        public:
-            double operator()(const Eigen::Matrix3d & f, Eigen::Ref <
-                const Eigen::Vector2d > a, Eigen::Ref <
-                    const Eigen::Vector2d > b) const;
-    };
-
     template < class Functor >
         Eigen::VectorXd distances(const Eigen::Matrix3d & f, Eigen::Ref <
             const Eigen::MatrixXd > a, Eigen::Ref <
@@ -268,17 +261,6 @@ namespace eight {
                 errs(i) = err(f, a.col(i), b.col(i));
             }
             return errs;
-        }
-
-    double SampsonDistanceSquared::operator()(const Eigen::Matrix3d & f, Eigen::Ref <
-        const Eigen::Vector2d > a, Eigen::Ref <
-            const Eigen::Vector2d > b) const {
-        Eigen::Vector3d fa = f.transpose() * a.homogeneous();
-        Eigen::Vector3d fb = f * b.homogeneous();
-
-        double bfa = a.homogeneous().transpose() * fb;
-
-        return (bfa * bfa) / (fa.topRows(2).squaredNorm() + fb.topRows(2).squaredNorm());
     }
 
     Eigen::Matrix3d essentialMatrix(const Eigen::Matrix3d & k,
