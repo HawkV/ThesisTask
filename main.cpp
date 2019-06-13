@@ -5,6 +5,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/sfm.hpp>
 #include <opencv2/viz.hpp>
+
 #include <iostream>
 #include <vector>
 #include <stdio.h>
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <memory>
 #include <chrono>
+#include <cstdlib>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -514,100 +516,149 @@ namespace eight {
 }
 
 int main(int argc, char ** argv) {
-    Mat img1 = imread(argv[1]);
-    Mat img2 = imread(argv[2]);
-
-    vector < KeyPoint > keypoints1, keypoints2;
-
-    Ptr < FeatureDetector > detector = ORB::create(10000);
-
-    detector - > detect(img1, keypoints1);
-    detector - > detect(img2, keypoints2);
-
-    Mat desc1, desc2;
-
-    Ptr < cv::xfeatures2d::DAISY > descriptor_extractor = cv::xfeatures2d::DAISY::create();
-
-    descriptor_extractor - > compute(img1, keypoints1, desc1);
-    descriptor_extractor - > compute(img2, keypoints2, desc2);
-
-    std::vector < vector < DMatch >> matches;
-
-    FlannBasedMatcher flannmatcher;
-    flannmatcher.add(desc1);
-    flannmatcher.train();
-    flannmatcher.knnMatch(desc2, matches, 2);
-
-    int num_good = 0;
-    std::vector < KeyPoint > matched1, matched2;
-    std::vector < DMatch > good_matches;
-
-    for (int i = 0; i < matches.size(); i++) {
-        DMatch first = matches[i][0];
-        DMatch second = matches[i][1];
-
-        if (first.distance < nn_match_ratio * second.distance) {
-            matched1.push_back(keypoints1[first.trainIdx]);
-            matched2.push_back(keypoints2[first.queryIdx]);
-            good_matches.push_back(DMatch(num_good, num_good, 0));
-            num_good++;
-        }
-    }
-
-    const double focusDistance = 1.0;
-    const int width = img1.cols;
-    const int height = img1.rows;
-
-    Eigen::Matrix3d k;
 
     k << focusDistance, 0.0, 0.5 * (width - 1),
         0.0, focusDistance, 0.5 * (height - 1),
         0.0, 0.0, 1.0;
 
-    int pointCount = good_matches.size();
-
-    Eigen::MatrixXd a(2, pointCount), b(2, pointCount);
-    Eigen::MatrixXd colors(3, pointCount);
-
-    for (size_t i = 0; i < pointCount; i++) {
-        Point2f point1 = matched1[good_matches[i].queryIdx].pt;
-        Point2f point2 = matched2[good_matches[i].trainIdx].pt;
-
-        a(0, i) = point1.x;
-        a(1, i) = point1.y;
-
-        b(0, i) = point2.x;
-        b(1, i) = point2.y;
-
-        Scalar color1 = img1.at < uchar > (point1);
-        Scalar color2 = img2.at < uchar > (point2);
-
-        for (size_t j = 0; j < 3; j++) {
-            colors(j, i) = (color1.val[j] + color2.val[j]) / 2;
+    vector < Mat > images;
+    
+    if (argv[1] == std::string("images"))
+    {
+        int arrLength = atoi(argv[2]);
+        
+        for (int i = 0; i < arrLength; i++)
+        {
+            images.push_back(imread(argv[3 + i]));            
         }
     }
+    else if (argv[1] == std::string("video"))
+    {
+        videoCapture cap (argv[2]);
+        
+        int frequency = atoi(argv[3]);
+        int frameNum = 0;
+        
+        while(1)
+        {
+            Mat frame;
+            cap >> frame;
 
-    std::cout << "Reconstruction start";
+            if (frame.empty())
+            {
+                break;
+            }
+            
+            if (frameNum == 0)
+            {
+                images.push_back(frame);
+            }
+            
+            frameNum++;
+            
+            frameNum %= frequency;
+        }
+    }
+    else 
+    {
+        return 1;
+    }
+    
+    for (int m = 0; m < images.size() - 1; m++)
+    { 
+        vector < KeyPoint > keypoints1, keypoints2;
+        Mat desc1, desc2;
 
-    auto F = eight::fundamentalMatrix(a, b);
+        Ptr < FeatureDetector > detector = ORB::create(10000);
 
-    std::cout << "fundamentalMatrix";
+        Eigen::Matrix3d k;
+        
+        Mat img1 = images[m];
+        Mat img2 = images[m + 1];
 
-    Eigen::Matrix3d E = eight::essentialMatrix(k, F);
 
-    std::cout << "essentialMatrix";
+        detector - > detect(img1, keypoints1);
+        detector - > detect(img2, keypoints2);
 
-    Eigen::Matrix < double, 3, 4 > pose = eight::pose(E, k, a, b);
 
-    std::cout << "pose";
+        Ptr < cv::xfeatures2d::DAISY > descriptor_extractor = cv::xfeatures2d::DAISY::create();
 
-    Eigen::Matrix < double, 3, Eigen::Dynamic > pointsTriangulated = eight::structureFromTwoViews(k, pose, a, b);
+        descriptor_extractor - > compute(img1, keypoints1, desc1);
+        descriptor_extractor - > compute(img2, keypoints2, desc2);
 
-    std::cout << "points";
+        std::vector < vector < DMatch >> matches;
 
-    writePly("points.ply", pointsTriangulated, colors);
+        FlannBasedMatcher flannmatcher;
+        flannmatcher.add(desc1);
+        flannmatcher.train();
+        flannmatcher.knnMatch(desc2, matches, 2);
 
-    std::cout << "triangulated";
+        int num_good = 0;
+        std::vector < KeyPoint > matched1, matched2;
+        std::vector < DMatch > good_matches;
+
+        for (int i = 0; i < matches.size(); i++) {
+            DMatch first = matches[i][0];
+            DMatch second = matches[i][1];
+
+            if (first.distance < nn_match_ratio * second.distance) {
+                matched1.push_back(keypoints1[first.trainIdx]);
+                matched2.push_back(keypoints2[first.queryIdx]);
+                good_matches.push_back(DMatch(num_good, num_good, 0));
+                num_good++;
+            }
+        }
+
+        const double focusDistance = 1.0;
+        const int width = img1.cols;
+        const int height = img1.rows;
+
+
+        int pointCount = good_matches.size();
+
+        Eigen::MatrixXd a(2, pointCount), b(2, pointCount);
+        Eigen::MatrixXd colors(3, pointCount);
+
+        for (size_t i = 0; i < pointCount; i++) {
+            Point2f point1 = matched1[good_matches[i].queryIdx].pt;
+            Point2f point2 = matched2[good_matches[i].trainIdx].pt;
+
+            a(0, i) = point1.x;
+            a(1, i) = point1.y;
+
+            b(0, i) = point2.x;
+            b(1, i) = point2.y;
+
+            Scalar color1 = img1.at < uchar > (point1);
+            Scalar color2 = img2.at < uchar > (point2);
+
+            for (size_t j = 0; j < 3; j++) {
+                colors(j, i) = (color1.val[j] + color2.val[j]) / 2;
+            }
+        }
+
+        std::cout << "Reconstruction start";
+
+        auto F = eight::fundamentalMatrix(a, b);
+
+        std::cout << "fundamentalMatrix";
+
+        Eigen::Matrix3d E = eight::essentialMatrix(k, F);
+
+        std::cout << "essentialMatrix";
+
+        Eigen::Matrix < double, 3, 4 > pose = eight::pose(E, k, a, b);
+
+        std::cout << "pose";
+
+        Eigen::Matrix < double, 3, Eigen::Dynamic > pointsTriangulated = eight::structureFromTwoViews(k, pose, a, b);
+
+        std::cout << "points";
+
+        writePly("points.ply", pointsTriangulated, colors);
+
+        std::cout << "triangulated";
+    }
 
     return 0;
 }
